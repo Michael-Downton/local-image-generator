@@ -1,3 +1,4 @@
+import { assetCache } from "./helpers/asset-cache";
 import { describe, expect, it } from "vitest";
 import { cacheKey, legacyCacheKey, type AssetFile } from "../src/core/model-manifest";
 import { sha256Hex } from "../src/vendor/kit/sha256";
@@ -48,7 +49,8 @@ const timer: StoreDeps["timer"] = (fn, ms) => {
   return () => clearTimeout(id);
 };
 function deps(cache: CacheLike, fetchFn: StoreDeps["fetchFn"]): StoreDeps {
-  return { openCache: async () => cache, fetchFn, timer };
+  const partial = assetCache();
+  return { openCache: async () => cache, openPartialCache: async () => partial, fetchFn, timer };
 }
 
 describe("ModelStore", () => {

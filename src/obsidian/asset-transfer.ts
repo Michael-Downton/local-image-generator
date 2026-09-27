@@ -24,6 +24,7 @@ export interface TransferOptions {
   connectMs: number;
   /** Byte-Bereich mit inklusiven Grenzen innerhalb von expectedBytes laut Manifest. Bei 200 wird die ganze Datei geladen. */
   range?: { start: number; end: number };
+  onBytes?: (received: number, wholeFile: boolean) => void;
 }
 
 function responseBytes(o: TransferOptions, response: Response): number {
@@ -100,6 +101,7 @@ export async function transferAsset<T>(o: TransferOptions, consume: (response: R
           } else {
             received += next.value.byteLength;
             if (received > expected) throw new TransferError("protocol", `download exceeds expected size for ${o.label}`);
+            o.onBytes?.(received, response.status === 200);
             target.enqueue(next.value);
           }
         } catch (error) { target.error(error); }
