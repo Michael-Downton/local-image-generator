@@ -14,6 +14,7 @@
 // Member-Access ist sauber.
 import { assetUrl, cacheKey, legacyCacheKey, type AssetFile, type AssetKey } from "../core/model-manifest";
 import { streamIntoCache, type CacheLike } from "../vendor/kit/cache-download";
+import { retryTransfer, type RetryOptions } from "./asset-retry";
 import { transferAsset, type AssetFetch } from "./asset-transfer";
 import { Sha256 } from "../vendor/kit/sha256";
 
@@ -27,6 +28,7 @@ export interface StoreDeps {
   openCache: () => Promise<CacheLike>;
   fetchFn: AssetFetch;
   connectMs?: number;
+  retry?: Pick<RetryOptions, "maxAttempts" | "random" | "now" | "onRetry">;
   /** Frist ohne ein einziges Byte, nach der ein Download als hängend gilt (Default 60 s). Kein
    *  Gesamt-Timeout: 2,6 GB dürfen so lange dauern, wie die Leitung braucht. */
   stallMs?: number;
@@ -104,9 +106,9 @@ export class ModelStore {
       fileIndex += 1;
       const key = cacheKey(file);
       try {
-        await this.downloadOne(cache, file, assetUrl(baseUrl, file), key, signal, (received, phase) =>
+        await retryTransfer(() => this.downloadOne(cache, file, assetUrl(baseUrl, file), key, signal, (received, phase) =>
           onProgress({ file, fileIndex, fileCount, received, total: file.bytes, phase }),
-        );
+        ), { ...this.deps.retry, signal, timer: this.deps.timer ?? realDeps.timer! });
       } catch (e) {
         await cache.delete(key).catch(() => false);
         if (signal.aborted || (e instanceof DOMException && e.name === "AbortError")) throw new DownloadAborted();

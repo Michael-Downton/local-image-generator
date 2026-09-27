@@ -133,6 +133,7 @@ describe("ModelStore", () => {
         return new Response(body, { status: 200 });
       },
       stallMs: 30,
+      retry: { maxAttempts: 1 },
       timer,
     });
     await expect(store.download([f], "http://x", () => {}, new AbortController().signal)).rejects.toThrow(/stalled/);
