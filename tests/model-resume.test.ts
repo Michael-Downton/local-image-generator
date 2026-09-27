@@ -152,4 +152,40 @@ describe("resumable model downloads", () => {
     expect(await first.isComplete([file])).toBe(false);
     expect(f.partial.entries.size).toBe(0);
   });
+
+  it("shrinks interrupted ranges down to a floor, retaining the same start offset", async () => {
+    const f = fixture();
+    const requests: string[] = [];
+    const store = new ModelStore({ ...f.deps, chunkBytes: 8, minChunkBytes: 2, retry: { maxAttempts: 4 },
+      timer: (fn, ms) => { const id = setTimeout(fn, ms <= 4000 ? 0 : ms); return () => clearTimeout(id); },
+      fetchFn: async (url, init) => {
+        const range = new Headers(init.headers).get("range")!;
+        requests.push(range);
+        const [start, end] = range.slice(6).split("-").map(Number) as [number, number];
+        if (end - start + 1 > 2) throw new TypeError("connection interrupted");
+        return f.deps.fetchFn(url, init);
+      },
+    });
+    await f.run(store);
+    expect(requests.slice(0, 3)).toEqual(["bytes=0-7", "bytes=0-3", "bytes=0-1"]);
+    expect(requests.slice(3)).toEqual(["bytes=2-3", "bytes=4-5", "bytes=6-7", "bytes=8-9", "bytes=10-11"]);
+    expect(await store.isComplete([file])).toBe(true);
+  });
+
+  it("does not shrink for rate limits and stops retrying at the minimum size", async () => {
+    for (const rateLimited of [true, false]) {
+      const f = fixture();
+      const requests: string[] = [];
+      const store = new ModelStore({ ...f.deps, minChunkBytes: 2, retry: { maxAttempts: 3 },
+        timer: (fn, ms) => { const id = setTimeout(fn, ms <= 4000 ? 0 : ms); return () => clearTimeout(id); },
+        fetchFn: async (_url, init) => {
+          requests.push(new Headers(init.headers).get("range")!);
+          if (rateLimited) return new Response("", { status: 429 });
+          throw new TypeError("offline");
+        },
+      });
+      await expect(f.run(store)).rejects.toMatchObject({ kind: rateLimited ? "http" : "network" });
+      expect(requests).toEqual(rateLimited ? ["bytes=0-3", "bytes=0-3", "bytes=0-3"] : ["bytes=0-3", "bytes=0-1", "bytes=0-1"]);
+    }
+  });
 });

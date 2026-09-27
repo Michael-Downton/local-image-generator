@@ -32,6 +32,7 @@ export interface StoreDeps {
   retry?: Pick<RetryOptions, "maxAttempts" | "random" | "now" | "onRetry">;
   openPartialCache?: () => Promise<PartialCache>;
   chunkBytes?: number;
+  minChunkBytes?: number;
   withLock?: <T>(signal: AbortSignal, operation: () => Promise<T>) => Promise<T>;
   /** Frist ohne ein einziges Byte, nach der ein Download als hängend gilt (Default 60 s). Kein
    *  Gesamt-Timeout: 2,6 GB dürfen so lange dauern, wie die Leitung braucht. */
@@ -170,10 +171,13 @@ export class ModelStore {
     let chunks = await partial.chunks();
     let offset = (chunks.at(-1)?.end ?? -1) + 1;
     report(offset, "downloading");
+    let chunkBytes = this.deps.chunkBytes ?? DEFAULT_CHUNK_BYTES;
+    const minimum = Math.min(chunkBytes, this.deps.minChunkBytes ?? 1024 * 1024);
     while (offset < file.bytes) {
       const start = offset;
-      const end = Math.min(file.bytes - 1, start + (this.deps.chunkBytes ?? DEFAULT_CHUNK_BYTES) - 1);
-      await retryTransfer(() => transferAsset({
+      await retryTransfer(() => {
+        const end = Math.min(file.bytes - 1, start + chunkBytes - 1);
+        return transferAsset({
         fetchFn: this.deps.fetchFn, timer: this.deps.timer ?? realDeps.timer!, signal, url,
         label: file.path, expectedBytes: file.bytes, range: { start, end },
         connectMs: this.deps.connectMs ?? 30_000, stallMs: this.deps.stallMs ?? DEFAULT_STALL_MS,
@@ -182,7 +186,17 @@ export class ModelStore {
         const whole = response.status === 200;
         await partial.put(whole ? 0 : start, whole ? file.bytes - 1 : end, response);
         offset = whole ? file.bytes : end + 1;
-      }), { ...this.deps.retry, signal, timer: this.deps.timer ?? realDeps.timer! });
+        });
+      }, {
+        ...this.deps.retry, maxAttempts: this.deps.retry?.maxAttempts ?? 5,
+        signal, timer: this.deps.timer ?? realDeps.timer!,
+        onRetry: (progress, error) => {
+          if (error.kind === "network" || error.kind === "timeout" || error.kind === "incomplete") {
+            chunkBytes = Math.max(minimum, Math.floor(chunkBytes / 2));
+          }
+          this.deps.retry?.onRetry?.(progress, error);
+        },
+      });
     }
     chunks = await partial.chunks();
     report(file.bytes, "verifying");
