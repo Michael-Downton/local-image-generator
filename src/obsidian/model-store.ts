@@ -14,6 +14,7 @@
 // Member-Access ist sauber.
 import { assetUrl, cacheKey, legacyCacheKey, type AssetFile, type AssetKey } from "../core/model-manifest";
 import { streamIntoCache, type CacheLike } from "../vendor/kit/cache-download";
+import { transferAsset, type AssetFetch } from "./asset-transfer";
 import { Sha256 } from "../vendor/kit/sha256";
 
 export const ASSET_CACHE_NAME = "local-image-generator-assets";
@@ -24,7 +25,8 @@ export type { CacheLike };
 
 export interface StoreDeps {
   openCache: () => Promise<CacheLike>;
-  fetchFn: (url: string, init: { signal: AbortSignal }) => Promise<Response>;
+  fetchFn: AssetFetch;
+  connectMs?: number;
   /** Frist ohne ein einziges Byte, nach der ein Download als hängend gilt (Default 60 s). Kein
    *  Gesamt-Timeout: 2,6 GB dürfen so lange dauern, wie die Leitung braucht. */
   stallMs?: number;
@@ -122,9 +124,15 @@ export class ModelStore {
     report: (received: number, phase: DownloadProgress["phase"]) => void,
   ): Promise<void> {
     const hasher = new Sha256();
-    const { received } = await streamIntoCache({
-      cache,
+    const { received } = await transferAsset({
       fetchFn: this.deps.fetchFn,
+      timer: this.deps.timer ?? realDeps.timer!,
+      signal, url, label: file.path, expectedBytes: file.bytes,
+      connectMs: this.deps.connectMs ?? 30_000,
+      stallMs: this.deps.stallMs ?? DEFAULT_STALL_MS,
+    }, (response) => streamIntoCache({
+      cache,
+      fetchFn: async () => response,
       url,
       key,
       signal,
@@ -137,12 +145,8 @@ export class ModelStore {
       // Das Kit reicht als zweites Argument den content-length mit; die Gesamtanzeige haengt
       // hier am Manifest (file.bytes), nicht am Header.
       onProgress: (r) => report(r, "downloading"),
-      // stallMs und timer wirken NUR zusammen: fehlt eines, prueft das Kit gar nicht auf
-      // Stillstand. Beide Defaults werden deshalb hier aufgeloest, nicht dort.
-      stallMs: this.deps.stallMs ?? DEFAULT_STALL_MS,
-      timer: this.deps.timer ?? realDeps.timer!,
       expectedBytes: file.bytes,
-    });
+    }));
     // Nach dem abgeschlossenen `put` (das steckt jetzt im Kit-Modul), nicht davor.
     report(received, "verifying");
     const actual = hasher.digestHex();
