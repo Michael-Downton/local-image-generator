@@ -50,4 +50,39 @@ describe("asset transfer", () => {
     const quota = new DOMException("disk full", "QuotaExceededError");
     await expect(transferAsset(options(async () => new Response("abc")), async () => { throw quota; })).rejects.toBe(quota);
   });
+
+  it("requests and validates a byte range without losing its status", async () => {
+    const fetchFn = vi.fn(async () => new Response("bc", { status: 206, headers: { "content-range": "bytes 1-2/3" } }));
+    const value = await transferAsset({ ...options(fetchFn), range: { start: 1, end: 2 } }, async (r) => {
+      expect(r.status).toBe(206);
+      return r.text();
+    });
+    expect(value).toBe("bc");
+    expect(fetchFn).toHaveBeenCalledWith("https://example.com/model", expect.objectContaining({ headers: { Range: "bytes=1-2" } }));
+  });
+
+  it("a server ignoring Range supplies a whole-file fallback, never an append", async () => {
+    const value = await transferAsset({ ...options(async () => new Response("abc")), range: { start: 1, end: 2 } }, async (r) => {
+      expect(r.status).toBe(200);
+      return r.text();
+    });
+    expect(value).toBe("abc");
+  });
+
+  it.each([null, "bytes 0-1/3", "bytes 1-2/4", "bytes 1-2/*", "bytes 1-1/3"])("rejects an incorrect Content-Range: %s", async (header) => {
+    const consume = vi.fn(read);
+    const fetchFn = async () => new Response("bc", { status: 206, headers: header ? { "content-range": header } : {} });
+    await expect(transferAsset({ ...options(fetchFn), range: { start: 1, end: 2 } }, consume)).rejects.toMatchObject({ kind: "protocol" });
+    expect(consume).not.toHaveBeenCalled();
+  });
+
+  it("rejects encoded ranges, short ranges and a 416 without accepting any file", async () => {
+    for (const [response, kind] of [
+      [new Response("bc", { status: 206, headers: { "content-range": "bytes 1-2/3", "content-encoding": "gzip" } }), "protocol"],
+      [new Response("b", { status: 206, headers: { "content-range": "bytes 1-2/3" } }), "incomplete"],
+      [new Response("", { status: 416 }), "http"],
+    ] as const) {
+      await expect(transferAsset({ ...options(async () => response), range: { start: 1, end: 2 } }, read)).rejects.toMatchObject({ kind });
+    }
+  });
 });

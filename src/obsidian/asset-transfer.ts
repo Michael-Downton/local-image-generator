@@ -22,11 +22,31 @@ export interface TransferOptions {
   expectedBytes: number;
   stallMs: number;
   connectMs: number;
+  /** Byte-Bereich mit inklusiven Grenzen innerhalb von expectedBytes laut Manifest. Bei 200 wird die ganze Datei geladen. */
+  range?: { start: number; end: number };
+}
+
+function responseBytes(o: TransferOptions, response: Response): number {
+  if (response.status === 200) return o.expectedBytes;
+  if (response.status !== 206 || !o.range) {
+    throw new TransferError("http", `download failed: HTTP ${response.status} for ${o.label}`, response.status, response.headers.get("retry-after"));
+  }
+  const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get("content-range") ?? "");
+  const encoding = response.headers.get("content-encoding");
+  if (!match || Number(match[1]) !== o.range.start || Number(match[2]) !== o.range.end ||
+    Number(match[3]) !== o.expectedBytes || (encoding !== null && encoding !== "identity")) {
+    throw new TransferError("protocol", `invalid download byte range for ${o.label}`);
+  }
+  return o.range.end - o.range.start + 1;
 }
 
 /** Die Anfrage bis zum Ende des Einlesens verwalten, einschliesslich Abbruch bei wartenden Lesezugriffen.
  * Das bestehende Kit uebernimmt weiterhin das Streaming in die Cache API und das Rueckgaengigmachen fehlgeschlagener Schreibvorgaenge. */
 export async function transferAsset<T>(o: TransferOptions, consume: (response: Response) => Promise<T>): Promise<T> {
+  if (o.range && (!Number.isSafeInteger(o.range.start) || !Number.isSafeInteger(o.range.end) ||
+    o.range.start < 0 || o.range.end < o.range.start || o.range.end >= o.expectedBytes)) {
+    throw new TransferError("protocol", `invalid requested byte range for ${o.label}`);
+  }
   const controller = new AbortController();
   const abort = (): void => controller.abort();
   o.signal.addEventListener("abort", abort, { once: true });
@@ -57,9 +77,14 @@ export async function transferAsset<T>(o: TransferOptions, consume: (response: R
 
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
-    const response = await network(() => o.fetchFn(o.url, { signal: controller.signal }), o.connectMs, "connection timed out");
-    if (response.status !== 200 || !response.body) {
-      void response.body?.cancel().catch(() => {});
+    const response = await network(() => o.fetchFn(o.url, {
+      signal: controller.signal,
+      ...(o.range ? { headers: { Range: `bytes=${o.range.start}-${o.range.end}` } } : {}),
+    }), o.connectMs, "connection timed out");
+    let expected: number;
+    try { expected = responseBytes(o, response); }
+    catch (error) { void response.body?.cancel().catch(() => {}); throw error; }
+    if (!response.body) {
       throw new TransferError("http", `download failed: HTTP ${response.status} for ${o.label}`, response.status, response.headers.get("retry-after"));
     }
     reader = response.body.getReader();
@@ -70,18 +95,18 @@ export async function transferAsset<T>(o: TransferOptions, consume: (response: R
         try {
           const next = await network(() => source.read(), o.stallMs, "stalled");
           if (next.done) {
-            if (received !== o.expectedBytes) throw new TransferError("incomplete", `download incomplete for ${o.label} (${received}/${o.expectedBytes} bytes)`);
+            if (received !== expected) throw new TransferError("incomplete", `download incomplete for ${o.label} (${received}/${expected} bytes)`);
             target.close();
           } else {
             received += next.value.byteLength;
-            if (received > o.expectedBytes) throw new TransferError("protocol", `download exceeds expected size for ${o.label}`);
+            if (received > expected) throw new TransferError("protocol", `download exceeds expected size for ${o.label}`);
             target.enqueue(next.value);
           }
         } catch (error) { target.error(error); }
       },
       cancel() { controller.abort(); void source.cancel().catch(() => {}); },
     }, { highWaterMark: 0 });
-    return await consume(new Response(body, { headers: response.headers }));
+    return await consume(new Response(body, { status: response.status, headers: response.headers }));
   } finally {
     o.signal.removeEventListener("abort", abort);
     controller.abort();
