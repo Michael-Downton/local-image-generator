@@ -14,6 +14,7 @@
     "lint": "node scripts/check-no-inline-disables.mjs && eslint src --max-warnings 0",
     "shots": "esbuild scripts/shots.ts --bundle --platform=node --format=esm --outfile=.shots.mjs --log-level=warning && node .shots.mjs",
     "shots:check": "D=\"${DOCS_ROOT:-$HOME/Projects/jkaindl/workspace/_docs}\"; test -f \"$D/readme/readme_lint.py\" || D=../../_docs; if test -f \"$D/readme/readme_lint.py\"; then python3 \"$D/readme/readme_lint.py\" .; else echo 'shots:check uebersprungen: readme_lint.py weder unter DOCS_ROOT bzw. ~/Projects/jkaindl/workspace/_docs noch unter ../../_docs (maintainer-lokal)'; fi",
+    "smoke:downloads": "tsc --project tsconfig.download-smoke.json --noEmit && node scripts/smoke-downloads.mjs",
     "smoke:assets": "node scripts/mock-assets.mjs",
     "smoke:comfy": "node scripts/mock-comfy.mjs",
     "smoke:gui": "esbuild scripts/gui-smoke.ts --bundle --platform=node --format=esm --outfile=.gui-smoke.mjs --log-level=warning && node .gui-smoke.mjs",

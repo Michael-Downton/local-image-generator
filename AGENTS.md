@@ -265,6 +265,13 @@ erlaubt, stillschweigend abzuweichen nicht.
   Datei liegt seit 0.27.0 ebenfalls im Kit (`src/vendor/kit/cache-download.ts`,
   `streamIntoCache`); lokal bleiben Key-Ableitung, Manifest-Liste, Fortschritts-Huelle und
   das Hash-Urteil.
+- **Download-Recovery:** `asset-transfer.ts` begrenzt Header-/Read-Wartezeiten an der injizierten
+  Fetch-Grenze; `asset-retry.ts` wiederholt nur klassifizierte Transportfehler. Kit-Kopien bleiben
+  unveraendert. Grosse Dateien laufen durch `PartialAssetStore` (eigener Cache mit vollem
+  Manifest-Hash und Byte-Grenzen); `ModelStore` prueft vor dem nutzbaren Cache-Key und kopiert
+  danach gestreamt. Web Locks serialisieren Download/Verwerfen/Entfernen ueber Vault-Fenster.
+  Keine Fortsetzung ohne Nutzer-Klick nach Neustart. Tests gehoeren zum jeweiligen Verhalten;
+  `npm run smoke:downloads` deckt reale Browser-Streams und Cache API ohne Modellgewichte ab.
 - **Cache-Namen nicht verwechseln:** 0.6-Assets liegen in `local-image-generator-assets` mit
   hash-gebundenen, URL-unabhaengigen Schluesseln; `legacy-cache.ts` loescht weiterhin nur
   `local-image-generator-models` (0.4). Die zwei kollidieren nicht.

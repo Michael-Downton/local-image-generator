@@ -12,6 +12,7 @@ import http from "node:http";
 import { createReadStream, statSync, writeFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assetRange, ASSET_CORS } from "./asset-range.mjs";
 
 const ROOT = join(fileURLToPath(new URL("..", import.meta.url)), "dist-assets");
 const PORT = Number(process.env.MOCK_ASSETS_PORT ?? 7862);
@@ -20,8 +21,7 @@ const counts = new Map();
 const persist = () => writeFileSync(COUNTS_FILE, JSON.stringify(Object.fromEntries(counts)));
 
 http.createServer((req, res) => {
-  const origin = req.headers.origin;
-  const cors = { "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS", "Access-Control-Allow-Headers": "*", "Access-Control-Expose-Headers": "Content-Length" };
+  const cors = ASSET_CORS;
   if (req.method === "OPTIONS") { res.writeHead(204, cors); return res.end(); }
   const rel = normalize(decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname)).replace(/^(\.\.[/\\])+/, "");
   const path = join(ROOT, rel);
@@ -37,9 +37,16 @@ http.createServer((req, res) => {
   counts.set(rel, (counts.get(rel) ?? 0) + 1);
   persist();
   console.log(`${req.method} ${rel} (${(size / 1e6).toFixed(1)} MB) #${counts.get(rel)}`);
-  res.writeHead(200, { ...cors, "Content-Type": "application/octet-stream", "Content-Length": String(size) });
+  const range = assetRange(req.headers.range, size);
+  if (!range) { res.writeHead(416, { ...cors, "Content-Range": `bytes */${size}` }); return res.end(); }
+  const { start, end, status } = range;
+  res.writeHead(status, { ...cors, "Content-Type": "application/octet-stream", "Content-Length": String(end - start + 1),
+    "Accept-Ranges": "bytes", ...(status === 206 ? { "Content-Range": `bytes ${start}-${end}/${size}` } : {}) });
   if (req.method === "HEAD") return res.end();
-  createReadStream(path).pipe(res);
+  const stream = createReadStream(path, { start, end });
+  stream.on("error", () => res.destroy());
+  res.on("close", () => stream.destroy());
+  stream.pipe(res);
 }).listen(PORT, "127.0.0.1", () => {
   persist(); // frische Zaehlerdatei je Server-Start — sonst liest Punkt 23 den Stand eines frueheren Laufs
   console.log(`mock-assets: ${ROOT} auf http://127.0.0.1:${PORT}`);

@@ -10,6 +10,46 @@ Each entry starts with what you see — the wording is the plugin's own English 
 
 **Fix:** click **Download model** in the panel, or use the model row under **Settings → Local Image Generator → Engine**. If the panel says the model is *partly downloaded*, the button reads **Download the missing …** and fetches only what is left.
 
+## Interrupted or paused downloads
+
+> Download paused · … retained
+
+**Cause:** the download was cancelled or interrupted before it finished. Completed files and completed portions of large files are saved.
+
+**Fix:** click **Resume download** in the panel or settings. After restarting Obsidian, downloading resumes only when you click. Files are verified before the model becomes available.
+
+To remove saved portions and start them again, choose **Discard partial download**. Already verified files remain installed.
+
+## The download keeps retrying
+
+> Retrying … in …s (attempt …/…) · … retained for this file
+
+**Cause:** a temporary connection or server problem interrupted the current transfer. The plugin waits before retrying and uses smaller portions after connection interruptions.
+
+**Fix:** let the countdown finish. You can cancel without losing completed portions. If retries stop with the following message, check your connection and click **Resume download**:
+
+> Download interrupted. Check your connection, then resume. Completed portions are saved.
+
+If your download source does not support resuming, an interrupted file must restart from the beginning. Completed files are still kept.
+
+## Model files could not be saved
+
+> Could not save model files. Free some disk space, then resume.
+
+**Cause:** Obsidian could not write the downloaded files, usually because disk space or its browser storage allowance ran out. Verifying and assembling a large file temporarily needs space for another copy — up to about 1.7 GB for SD-Turbo's UNet.
+
+**Fix:** free space on the drive containing Obsidian's profile, then click **Resume download**. Model files are stored outside the vault.
+
+## The download source returned an error
+
+> Download source returned HTTP … . Check the download source or try again later.
+
+> The download source returned an invalid file or byte range. Check the download source before retrying.
+
+**Cause:** the source could not serve the requested file or returned an unexpected response.
+
+**Fix:** check **Advanced → Download source**. If you changed it, restore the default and try again. If the server is busy or limiting requests, wait before retrying. The plugin respects the server's requested waiting time; delays longer than one minute require you to try again later.
+
 ## Checksum mismatch
 
 > Checksum mismatch for … — the file was discarded. Try the download again.

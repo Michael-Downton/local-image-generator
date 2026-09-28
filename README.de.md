@@ -462,7 +462,10 @@ der Vorgabe (derzeit nur SDXL-Turbo) zeigt das Plugin einen Bestätigungsdialog 
 Größe und dem Hinweis zur Speicherspitze oben — Abbrechen lädt nichts. Die Dateien liegen
 in der Cache-API des Browsers im Obsidian-Profil — **außerhalb deines Vaults**, werden
 also nie gesynct — und **Entfernen** in den Einstellungen löscht sie wieder. Ein Download
-lässt sich jederzeit abbrechen; fertige Dateien bleiben.
+lässt sich jederzeit abbrechen; fertige Dateien und abgeschlossene Teile bleiben gespeichert.
+Bei vorübergehenden Verbindungsproblemen versucht das Plugin es automatisch erneut.
+Um später weiterzuladen, wähle **Download fortsetzen**. Hilfe findest du unter
+[Troubleshooting](docs/troubleshooting.md#interrupted-or-paused-downloads).
 
 Die Download-Quelle ist die einzige Netzwerkverbindung der eingebauten Engine. Im
 Server-Modus ist die einzige Verbindung der Server-Endpunkt, den du konfigurierst — und

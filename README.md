@@ -485,7 +485,9 @@ confirmation dialog naming its size and the peak-memory note above —
 cancelling it downloads nothing. The files live in the browser's Cache API
 inside Obsidian's profile — **outside your vault**, so they are never
 synced — and **Remove** in the settings deletes them again. You can cancel a
-download at any time; finished files are kept.
+download at any time; completed files and portions are kept. Temporary connection
+problems are retried automatically. To continue later, choose **Resume download**.
+See [troubleshooting](docs/troubleshooting.md#interrupted-or-paused-downloads) for help.
 
 The download source is the only network connection the built-in engine makes.
 In server mode, the only connection is to the server endpoint you configure,

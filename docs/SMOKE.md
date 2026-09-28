@@ -6,6 +6,26 @@ ob das Ergebnis auch im DOM ankommt, ob ein Knopf feuert, ob eine Notiz im Vault
 Diese Naht zum Host prüft `scripts/gui-smoke.ts` gegen ein **laufendes** Obsidian
 (CORE-TEST-02 b).
 
+## Download-Wiederherstellung ohne Modellgewichte pruefen
+
+Mit installiertem Chromium zuerst `npm ci` und `npm run gate`, danach
+`npm run smoke:downloads` ausfuehren (`CHROMIUM_BIN` kann auf die Programmdatei zeigen).
+Dieser eigenstaendige Browser-Smoke nutzt ein isoliertes, temporaeres Browser-Profil und
+zwei lokale HTTP-Server. Das synthetische Modell ist nur 1 MiB gross.
+
+Der Test prueft echte Cross-Origin-Anfragen, Cache API und Web Locks: abgebrochene HTTP-Streams,
+Neuladen der Seite mit anschliessendem Fortsetzen, ignorierte und ungueltige Byte-Bereiche,
+beschaedigte Daten, adaptive Wiederholungen, konkurrierende Stores und gezieltes Verwerfen.
+Das Skript entfernt sein Profil und beendet seine Server. Es prueft das Download-Subsystem
+in Chromium; Obsidian und Bilderzeugung sind dafuer nicht erforderlich.
+
+Der bestehende Server `npm run smoke:assets` unterstuetzt ebenfalls Bereichsanfragen fuer
+manuelle Tests mit konvertierten Modell-Dateien. Fuer einen Test der Obsidian-Oberflaeche
+einen Download starten, den Server unterbrechen und Countdown sowie Abbruch pruefen.
+Obsidian neu starten und den Download fortsetzen. Pruefen, dass Verwerfen den gespeicherten
+Teilfortschritt entfernt und die Bilderzeugung bis zum Abschluss der Pruefung gesperrt bleibt.
+Auf Englisch und Deutsch wiederholen.
+
 ## Voraussetzungen
 
 ⚠️ **Zuerst prüfen, wer sonst an Obsidian hängt.** Ein `quit` trifft die Instanz, an der
