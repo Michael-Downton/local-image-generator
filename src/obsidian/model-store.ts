@@ -14,7 +14,7 @@
 // Member-Access ist sauber.
 import { assetUrl, cacheKey, legacyCacheKey, type AssetFile, type AssetKey } from "../core/model-manifest";
 import { streamIntoCache, type CacheLike } from "../vendor/kit/cache-download";
-import { retryTransfer, type RetryOptions } from "./asset-retry";
+import { retryTransfer, type RetryOptions, type RetryProgress } from "./asset-retry";
 import { transferAsset, type AssetFetch } from "./asset-transfer";
 import { PartialAssetStore, PARTIAL_CACHE_NAME, type PartialCache } from "./partial-assets";
 import { Sha256 } from "../vendor/kit/sha256";
@@ -49,6 +49,7 @@ export interface DownloadProgress {
   received: number;
   total: number;
   phase: "downloading" | "verifying";
+  retry?: RetryProgress;
 }
 
 export class DownloadAborted extends Error {
@@ -124,11 +125,13 @@ export class ModelStore {
       try {
         const report = (received: number, phase: DownloadProgress["phase"]): void =>
           onProgress({ file, fileIndex, fileCount, received, total: file.bytes, phase });
+        const retrying = (received: number, retry: RetryProgress): void =>
+          onProgress({ file, fileIndex, fileCount, received, total: file.bytes, phase: "downloading", retry });
         if (file.bytes > (this.deps.chunkBytes ?? DEFAULT_CHUNK_BYTES)) {
-          await this.downloadResumable(cache, file, assetUrl(baseUrl, file), signal, report);
+          await this.downloadResumable(cache, file, assetUrl(baseUrl, file), signal, report, retrying);
         } else {
           await retryTransfer(() => this.downloadOne(cache, file, assetUrl(baseUrl, file), key, signal, report),
-            { ...this.deps.retry, signal, timer: this.deps.timer ?? realDeps.timer! });
+            { ...this.deps.retry, signal, timer: this.deps.timer ?? realDeps.timer!, onWait: (retry) => retrying(0, retry) });
         }
       } catch (e) {
         await cache.delete(key).catch(() => false);
@@ -165,7 +168,8 @@ export class ModelStore {
   }
 
   private async downloadResumable(cache: CacheLike, file: AssetFile, url: string, signal: AbortSignal,
-    report: (received: number, phase: DownloadProgress["phase"]) => void): Promise<void> {
+    report: (received: number, phase: DownloadProgress["phase"]) => void,
+    retrying: (received: number, retry: RetryProgress) => void): Promise<void> {
     const partial = await this.partialStore(file);
     await partial.clear(true);
     let chunks = await partial.chunks();
@@ -190,6 +194,7 @@ export class ModelStore {
       }, {
         ...this.deps.retry, maxAttempts: this.deps.retry?.maxAttempts ?? 5,
         signal, timer: this.deps.timer ?? realDeps.timer!,
+        onWait: (retry) => retrying(start, retry),
         onRetry: (progress, error) => {
           if (error.kind === "network" || error.kind === "timeout" || error.kind === "incomplete") {
             chunkBytes = Math.max(minimum, Math.floor(chunkBytes / 2));

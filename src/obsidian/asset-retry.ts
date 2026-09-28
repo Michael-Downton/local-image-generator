@@ -9,6 +9,7 @@ export interface RetryOptions {
   random?: () => number;
   now?: () => number;
   onRetry?: (progress: RetryProgress, error: TransferError) => void;
+  onWait?: (progress: RetryProgress) => void;
 }
 
 export function isTransient(error: unknown): error is TransferError {
@@ -53,8 +54,15 @@ export async function retryTransfer<T>(operation: () => Promise<T>, o: RetryOpti
       const delayMs = retryDelay(error, attempt, o);
       // Bei langem Retry-After weder vorzeitig wiederholen noch den Nutzer unbegrenzt warten lassen.
       if (delayMs > 60_000) throw error;
-      o.onRetry?.({ attempt: attempt + 1, maxAttempts, delayMs }, error);
-      await wait(delayMs, o);
+      const progress = { attempt: attempt + 1, maxAttempts, delayMs };
+      o.onRetry?.(progress, error);
+      if (!o.onWait) { await wait(delayMs, o); continue; }
+      for (let remaining = delayMs; remaining > 0;) {
+        o.onWait({ ...progress, delayMs: remaining });
+        const step = Math.min(1000, remaining);
+        await wait(step, o);
+        remaining -= step;
+      }
     }
   }
 }

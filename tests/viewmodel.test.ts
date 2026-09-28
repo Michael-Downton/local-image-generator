@@ -51,6 +51,38 @@ const base: PanelState = {
 /** Basis + Overrides — spart das Ausschreiben aller PanelState-Felder in jedem Test. */
 const stateOf = (overrides: Partial<PanelState>): PanelState => ({ ...base, ...overrides });
 
+describe("download recovery", () => {
+  it("shows resume and discard for retained data, including after a download error", () => {
+    for (const engine of [{ kind: "paused", retained: 1024 * 1024 }, { kind: "error", retained: 1024 * 1024, message: "offline" }] as const) {
+      const vm = buildViewModel(stateOf({ mode: "builtin", engine }));
+      expect(vm.empty?.ctaAction).toBe("download");
+      expect(vm.empty?.ctaLabel).toBe("Resume download");
+      expect(vm.empty?.discardLabel).toBe("Discard partial download");
+      expect(vm.empty?.text).toContain("1 MB");
+      expect(vm.generateEnabled).toBe(false);
+    }
+  });
+
+  it("shows retry timing and retained bytes with cancellation instead of another download", () => {
+    const vm = buildViewModel(stateOf({ mode: "builtin", engine: {
+      kind: "retrying", file: "unet.onnx", retained: 1024 * 1024, seconds: 3, attempt: 2, maxAttempts: 5,
+    } }));
+    expect(vm.status.text).toContain("3s");
+    expect(vm.status.text).toContain("2/5");
+    expect(vm.status.text).toContain("1 MB");
+    expect(vm.empty?.ctaAction).toBe("cancel-download");
+    expect(vm.empty?.discardLabel).toBeUndefined();
+    expect(vm.generateEnabled).toBe(false);
+  });
+
+  it("allows cancellation while waiting for another vault's download lock", () => {
+    const vm = buildViewModel(stateOf({ mode: "builtin", engine: { kind: "preparing-download" } }));
+    expect(vm.status.text).toBe("Preparing download…");
+    expect(vm.empty?.ctaAction).toBe("cancel-download");
+    expect(vm.generateEnabled).toBe(false);
+  });
+});
+
 /** Alias fuer die comfy-Tests unten — dieselbe Basis wie `base`, nur unter dem Namen, den
  *  der Task-9-Brief benutzt. */
 const PANEL_DEFAULT = base;

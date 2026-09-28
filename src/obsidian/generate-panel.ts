@@ -56,6 +56,7 @@ export class GeneratePanel implements HubPanel<TabId> {
   private emptyEl!: HTMLElement;
   private emptyTextEl!: HTMLElement;
   private emptyCtaEl!: HTMLButtonElement;
+  private discardDownloadEl!: HTMLButtonElement;
   private emptyCtaAction: "settings" | "recheck" | "download" | "cancel-download" | undefined;
   private imageCard!: HTMLElement;
   private imgEl!: HTMLImageElement;
@@ -228,6 +229,9 @@ export class GeneratePanel implements HubPanel<TabId> {
       else if (this.emptyCtaAction === "recheck") this.host.recheckServer();
       else this.host.openSettings();
     });
+
+    this.discardDownloadEl = this.emptyEl.createEl("button", { cls: "lig-discard-download is-hidden" });
+    this.discardDownloadEl.addEventListener("click", () => this.host.discardDownload());
 
     this.imageCard = root.createDiv({ cls: "lig-card" });
     this.imgEl = this.imageCard.createEl("img", { cls: "lig-image" });
@@ -468,6 +472,8 @@ export class GeneratePanel implements HubPanel<TabId> {
       this.emptyCtaEl.toggleClass("is-hidden", vm.empty.ctaLabel === undefined);
       if (vm.empty.ctaLabel) this.emptyCtaEl.setText(vm.empty.ctaLabel);
       this.emptyCtaAction = vm.empty.ctaAction;
+      this.discardDownloadEl.toggleClass("is-hidden", vm.empty.discardLabel === undefined);
+      if (vm.empty.discardLabel) this.discardDownloadEl.setText(vm.empty.discardLabel);
     }
     this.imageCard.toggleClass("is-hidden", !vm.showImage);
     if (state.image) this.imgEl.src = state.image.dataUrl;

@@ -42,6 +42,7 @@ export interface ViewHost {
   /** Eingebaute Engine: Modell-Download aus dem Panel starten/abbrechen (Spec 0.6 §6). */
   downloadModel(): void;
   cancelDownload(): void;
+  discardDownload(): void;
   /** Eingebautes Modell wechseln (Panel-Dropdown, Task 12) — nur unter geladenen Modellen
    *  waehlbar (Spec 0.9 §6.2): ein Panel-Klick loest nie einen Download aus. */
   setBuiltinModel(id: BuiltinModelId): void;

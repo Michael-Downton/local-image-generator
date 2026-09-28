@@ -10,6 +10,16 @@
 import { defineStrings } from "../vendor/kit/i18n";
 
 export const EN: Record<string, string> = {
+  "status.preparingDownload": "Preparing download…",
+  "status.downloadPaused": "Download paused · {0} retained",
+  "status.downloadRetry": "Retrying {0} in {1}s (attempt {2}/{3}) · {4} retained for this file",
+  "empty.downloadPaused": "{0} of your unfinished downloads is saved. Resume when you are ready; verification finishes before the model becomes available.",
+  "settings.model.resume": "Resume download",
+  "settings.model.discard": "Discard partial download",
+  "engine.downloadNetwork": "Download interrupted. Check your connection, then resume. Completed portions are saved.",
+  "engine.downloadStorage": "Could not save model files. Free some disk space, then resume.",
+  "engine.downloadHttp": "Download source returned HTTP {0}. Check the download source or try again later.",
+  "engine.downloadProtocol": "The download source returned an invalid file or byte range. Check the download source before retrying.",
   "cmd.open": "Open generator",
 
   "view.title": "Local Image Generator",
@@ -100,7 +110,7 @@ export const EN: Record<string, string> = {
   "empty.downloadCta": "Download model ({0})",
   "empty.notDownloadedPartial": "The built-in model ({0}) is partly downloaded — {1} of {2} are still missing. Nothing is downloaded before you click.",
   "empty.downloadCtaPartial": "Download the missing {0}",
-  "empty.downloading": "Downloading the model. You can cancel; finished files are kept.",
+  "empty.downloading": "Downloading the model. You can cancel; completed files and portions are kept.",
   "empty.cancelCta": "Cancel download",
   "notice.modelReady": "Model downloaded and verified — ready to generate.",
   "notice.busy": "Not possible while an image is being generated — wait for it to finish.",
@@ -232,6 +242,16 @@ export const EN: Record<string, string> = {
 };
 
 export const DE: Record<string, string> = {
+  "status.preparingDownload": "Download wird vorbereitet…",
+  "status.downloadPaused": "Download pausiert · {0} gespeichert",
+  "status.downloadRetry": "Neuer Versuch für {0} in {1}s ({2}/{3}) · {4} dieser Datei gespeichert",
+  "empty.downloadPaused": "{0} deiner unvollständigen Downloads ist gespeichert. Setze den Download fort, wenn du bereit bist; erst nach der Prüfung wird das Modell verfügbar.",
+  "settings.model.resume": "Download fortsetzen",
+  "settings.model.discard": "Teil-Download verwerfen",
+  "engine.downloadNetwork": "Download unterbrochen. Prüfe die Verbindung und setze ihn fort. Fertige Teile bleiben gespeichert.",
+  "engine.downloadStorage": "Modelldateien konnten nicht gespeichert werden. Gib Speicherplatz frei und setze den Download fort.",
+  "engine.downloadHttp": "Die Download-Quelle meldet HTTP {0}. Prüfe die Quelle oder versuche es später erneut.",
+  "engine.downloadProtocol": "Die Download-Quelle lieferte eine ungültige Datei oder einen falschen Byte-Bereich. Prüfe die Quelle vor dem nächsten Versuch.",
   "cmd.open": "Bildgenerator öffnen",
 
   "view.title": "Lokaler Bildgenerator",
@@ -319,7 +339,7 @@ export const DE: Record<string, string> = {
   "empty.downloadCta": "Modell herunterladen ({0})",
   "empty.notDownloadedPartial": "Das eingebaute Modell ({0}) ist teilweise geladen — es fehlen noch {1} von {2}. Ohne Klick wird nichts geladen.",
   "empty.downloadCtaPartial": "Fehlende {0} herunterladen",
-  "empty.downloading": "Das Modell wird geladen. Abbrechen ist möglich; fertige Dateien bleiben.",
+  "empty.downloading": "Das Modell wird geladen. Abbrechen ist möglich; fertige Dateien und Teile bleiben.",
   "empty.cancelCta": "Download abbrechen",
   "notice.modelReady": "Modell heruntergeladen und geprüft — bereit zum Generieren.",
   "notice.busy": "Während ein Bild entsteht nicht möglich — bitte das Ende abwarten.",

@@ -44,6 +44,7 @@ import { hasLegacyCache } from "./obsidian/legacy-cache";
 import { LocalEngineBackend, SessionBuildTimeout } from "./obsidian/local-engine";
 import { PlaygroundBackend } from "./obsidian/playground-backend";
 import { createShortcutsBridge, type ShortcutsBridge } from "./vendor/kit-obsidian/shortcuts-bridge";
+import { downloadMessage } from "./obsidian/download-message";
 import { DownloadAborted, IntegrityError, ModelStore } from "./obsidian/model-store";
 import { checkGpu, createOrtSession, initOrt } from "./obsidian/ort-host";
 import { base64OfDataUrl, dataUrlToBytes, decodeInitImage, rgbaToDataUrl } from "./obsidian/png";
@@ -197,6 +198,7 @@ export default class LocalImageGeneratorPlugin extends Plugin {
       recheckServer: () => void this.checkServer(),
       downloadModel: () => void this.startDownload(),
       cancelDownload: () => this.cancelDownload(),
+      discardDownload: () => void this.discardDownload(),
       setBuiltinModel: (id) => void this.setBuiltinModel(id),
       saveImage: (mode) => void this.saveImage(mode),
       openSettings: () => {
@@ -533,7 +535,8 @@ export default class LocalImageGeneratorPlugin extends Plugin {
     const cached = await this.modelStore.cachedKeys(files).catch(() => null);
     if (this.unloaded) return;
     const complete = cached !== null && cached.length === files.length;
-    this.state.missingBytes = cached === null ? null : missingBytes(files, cached);
+    const retained = await this.modelStore.retainedBytes(files).catch(() => 0);
+    this.state.missingBytes = cached === null ? null : Math.max(0, missingBytes(files, cached) - retained);
     // Welche Modelle ueberhaupt im Cache liegen — unabhaengig vom aktiven, fuer den
     // Settings-Tab (Task 11). Ohne RUNTIME_WASM: die zaehlt nicht als Teil eines Modells.
     const geladen: BuiltinModelId[] = [];
@@ -542,7 +545,7 @@ export default class LocalImageGeneratorPlugin extends Plugin {
     }
     if (this.unloaded) return;
     this.state.downloadedModels = geladen;
-    this.setEngineState({ kind: complete ? "ready" : "not-downloaded" });
+    this.setEngineState(complete ? { kind: "ready" } : retained > 0 ? { kind: "paused", retained } : { kind: "not-downloaded" });
   }
 
   /** Opt-in-Download aller fehlenden Assets des GEWAEHLTEN Modells (Spec 0.6 §4: ohne Klick
@@ -574,18 +577,23 @@ export default class LocalImageGeneratorPlugin extends Plugin {
       });
       if (!ok) return; // kein Byte
     }
+    if (this.unloaded || this.downloadAbort || this.settings.engine !== "builtin" || m.id !== this.settings.builtinModel) return;
     const ac = new AbortController();
     this.downloadAbort = ac;
     const files = this.activeFiles();
+    let failure: unknown;
+    this.setEngineState({ kind: "preparing-download" });
     try {
       await this.modelStore.download(
         files,
         this.settings.assetBaseUrl,
         (p) => {
-          if (this.unloaded) return;
+          if (this.unloaded || ac.signal.aborted || m.id !== this.settings.builtinModel || this.settings.engine !== "builtin") return;
           const file = p.file.path.split("/").pop() ?? p.file.path;
           this.setEngineState(
-            p.phase === "verifying"
+            p.retry
+              ? { kind: "retrying", file, retained: p.received, seconds: Math.ceil(p.retry.delayMs / 1000), attempt: p.retry.attempt, maxAttempts: p.retry.maxAttempts }
+              : p.phase === "verifying"
               ? { kind: "verifying", file }
               : { kind: "downloading", file, received: p.received, total: p.total, fileIndex: p.fileIndex, fileCount: p.fileCount },
           );
@@ -595,20 +603,27 @@ export default class LocalImageGeneratorPlugin extends Plugin {
       if (this.unloaded) return;
       new Notice(t("notice.modelReady"));
     } catch (e) {
-      if (this.unloaded) return;
-      this.downloadAbort = null;
-      if (e instanceof DownloadAborted) {
-        await this.refreshEngineState();
-      } else if (e instanceof IntegrityError) {
-        this.setEngineState({ kind: "error", message: t("engine.integrityError", e.file.path) });
-      } else {
-        this.setEngineState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
-      }
-      return;
+      failure = e;
     } finally {
-      this.downloadAbort = null;
+      if (this.downloadAbort === ac) this.downloadAbort = null;
     }
+    if (this.unloaded) return;
     await this.refreshEngineState();
+    if (failure && !(failure instanceof DownloadAborted) && m.id === this.settings.builtinModel && this.settings.engine === "builtin") {
+      const retained = this.state.engine.kind === "paused" ? this.state.engine.retained : 0;
+      this.setEngineState({ kind: "error", retained,
+        message: failure instanceof IntegrityError ? t("engine.integrityError", failure.file.path) : downloadMessage(failure) });
+    }
+  }
+
+  async discardDownload(): Promise<void> {
+    if (this.downloadAbort) return;
+    try {
+      await this.modelStore.discardPartial(this.activeFiles());
+      await this.refreshEngineState();
+    } catch (error) {
+      this.setEngineState({ kind: "error", message: downloadMessage(error) });
+    }
   }
 
   cancelDownload(): void {

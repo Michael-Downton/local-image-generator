@@ -23,7 +23,7 @@ import { App, Notice, PluginSettingTab, Setting, type SettingDefinitionItem } fr
 import { STEPS } from "../core/generation";
 import { BUILTIN_MODELS, DEFAULT_ASSET_BASE_URL, filesFor, isBuiltinModelId, modelById, totalBytes, type AssetFile, type BuiltinModelId } from "../core/model-manifest";
 import { DEFAULT_SETTINGS, SETTINGS_SCHEMA, type EngineChoice, type LigSettings } from "../core/settings";
-import { formatBytes, type EngineState } from "../core/viewmodel";
+import { formatBytes, retryStatus, type EngineState } from "../core/viewmodel";
 import { localImageEndpoints, type EndpointRole } from "../core/resolve-endpoint";
 import { t } from "../vendor/kit/i18n";
 import { validateSettings } from "../vendor/kit/settings_schema";
@@ -288,15 +288,19 @@ export class LigSettingTab extends PluginSettingTab {
     setting.descEl.createEl("br");
     setting.descEl.createEl("a", { text: activeModel.license.name, href: activeModel.license.url });
     this.modelStatusEl = setting.controlEl.createSpan({ text: engineStatusText(st), cls: "lig-model-status" });
-    const busy = st.kind === "downloading" || st.kind === "verifying";
+    const busy = st.kind === "downloading" || st.kind === "verifying" || st.kind === "retrying" || st.kind === "preparing-download";
     if (busy) {
       setting.addButton((b) => b.setButtonText(t("settings.model.cancel")).onClick(() => this.plugin.cancelDownload()));
       return;
     }
-    if (st.kind === "not-downloaded" || st.kind === "error") {
+    const retained = st.kind === "paused" || st.kind === "error" ? st.retained ?? 0 : 0;
+    if (st.kind === "not-downloaded" || st.kind === "error" || st.kind === "paused") {
       setting.addButton((b) =>
-        b.setButtonText(t("settings.model.download")).setCta().onClick(() => void this.plugin.startDownload()),
+        b.setButtonText(t(retained > 0 ? "settings.model.resume" : "settings.model.download")).setCta().onClick(() => void this.plugin.startDownload()),
       );
+    }
+    if (retained > 0) {
+      setting.addButton((b) => b.setButtonText(t("settings.model.discard")).onClick(() => void this.plugin.discardDownload()));
     }
     if (st.kind === "ready" || st.kind === "error") {
       setting.addButton((b) => {
@@ -529,6 +533,9 @@ function engineStatusText(st: EngineState): string {
   switch (st.kind) {
     case "gpu-checking": return t("status.gpuChecking");
     case "gpu-missing": return st.reason === "no-webgpu" ? t("status.gpuMissing.noWebgpu") : t("status.gpuMissing.noF16");
+    case "preparing-download": return t("status.preparingDownload");
+    case "paused": return t("status.downloadPaused", formatBytes(st.retained));
+    case "retrying": return retryStatus(st);
     case "not-downloaded": return t("status.notDownloaded");
     case "downloading": return t("status.downloading", st.file, formatBytes(st.received), formatBytes(st.total), String(st.fileIndex), String(st.fileCount));
     case "verifying": return t("status.verifying", st.file);

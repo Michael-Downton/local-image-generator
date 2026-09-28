@@ -70,4 +70,18 @@ describe("asset retries", () => {
     expect(operation).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("reports a countdown while keeping one active timer and one retry notification", async () => {
+    vi.useFakeTimers();
+    const operation = vi.fn().mockRejectedValueOnce(new TransferError("http", "limited", 429, "3")).mockResolvedValue(1);
+    const onWait = vi.fn(), onRetry = vi.fn();
+    const result = retryTransfer(operation, { ...options(), onWait, onRetry });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(await result).toBe(1);
+    expect(onWait.mock.calls.map(([p]) => p.delayMs)).toEqual([3000, 2000, 1000]);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

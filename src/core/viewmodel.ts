@@ -21,10 +21,13 @@ export type EngineState =
   | { kind: "gpu-checking" }
   | { kind: "gpu-missing"; reason: "no-webgpu" | "no-f16" }
   | { kind: "not-downloaded" }
+  | { kind: "preparing-download" }
+  | { kind: "paused"; retained: number }
+  | { kind: "retrying"; file: string; retained: number; seconds: number; attempt: number; maxAttempts: number }
   | { kind: "downloading"; file: string; received: number; total: number; fileIndex: number; fileCount: number }
   | { kind: "verifying"; file: string }
   | { kind: "ready" }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string; retained?: number };
 
 export type RunState =
   | { kind: "idle" }
@@ -132,7 +135,7 @@ export interface PanelViewModel {
   status: { icon: "loader" | "circle-check" | "circle-x"; text: string; cls: "is-checking" | "is-ok" | "is-error" };
   /** ctaAction sagt der View, WAS der CTA-Klick auslöst (Settings öffnen vs. Server neu
    *  prüfen) — die View selbst entscheidet nichts, sie liest nur dieses Feld. */
-  empty: { text: string; ctaLabel?: string; ctaAction?: "settings" | "recheck" | "download" | "cancel-download" } | null;
+  empty: { text: string; ctaLabel?: string; ctaAction?: "settings" | "recheck" | "download" | "cancel-download"; discardLabel?: string } | null;
   generateEnabled: boolean;
   insertEnabled: boolean;
   showImage: boolean;
@@ -314,6 +317,9 @@ function engineStatus(s: PanelState): PanelViewModel["status"] {
     return { icon: "circle-x", text: e.reason === "no-webgpu" ? t("status.gpuMissing.noWebgpu") : t("status.gpuMissing.noF16"), cls: "is-error" };
   if (e.kind === "error") return { icon: "circle-x", text: t("status.error", e.message), cls: "is-error" };
   if (e.kind === "not-downloaded") return { icon: "circle-x", text: t("status.notDownloaded"), cls: "is-error" };
+  if (e.kind === "preparing-download") return { icon: "loader", text: t("status.preparingDownload"), cls: "is-checking" };
+  if (e.kind === "paused") return { icon: "circle-x", text: t("status.downloadPaused", formatBytes(e.retained)), cls: "is-error" };
+  if (e.kind === "retrying") return { icon: "loader", text: retryStatus(e), cls: "is-checking" };
   if (e.kind === "downloading")
     return { icon: "loader", text: t("status.downloading", e.file, formatBytes(e.received), formatBytes(e.total), String(e.fileIndex), String(e.fileCount)), cls: "is-checking" };
   if (e.kind === "verifying") return { icon: "loader", text: t("status.verifying", e.file), cls: "is-checking" };
@@ -359,9 +365,17 @@ function serverEmpty(s: PanelState, busy: boolean): PanelViewModel["empty"] {
   return null;
 }
 
+export function retryStatus(e: Extract<EngineState, { kind: "retrying" }>): string {
+  return t("status.downloadRetry", e.file, e.seconds, e.attempt, e.maxAttempts, formatBytes(e.retained));
+}
+
 function engineEmpty(s: PanelState, busy: boolean): PanelViewModel["empty"] {
   const e = s.engine;
   if (e.kind === "gpu-missing") return { text: t("empty.gpuMissing"), ctaLabel: t("empty.noServerCta"), ctaAction: "settings" };
+  if (e.kind === "paused" || (e.kind === "error" && (e.retained ?? 0) > 0)) {
+    return { text: t("empty.downloadPaused", formatBytes(e.retained ?? 0)),
+      ctaLabel: t("settings.model.resume"), ctaAction: "download", discardLabel: t("settings.model.discard") };
+  }
   if (e.kind === "not-downloaded" || e.kind === "error") {
     // Review-Befund: `allAssets()` liefert IMMER das Default-Modell (sd-turbo) — mit
     // SDXL-Turbo gewaehlt und nicht gecacht zeigte die Zeile dessen 2,5 GB, laed aber
@@ -384,7 +398,7 @@ function engineEmpty(s: PanelState, busy: boolean): PanelViewModel["empty"] {
       ctaAction: "download",
     };
   }
-  if (e.kind === "downloading" || e.kind === "verifying")
+  if (e.kind === "downloading" || e.kind === "verifying" || e.kind === "retrying" || e.kind === "preparing-download")
     return { text: t("empty.downloading"), ctaLabel: t("empty.cancelCta"), ctaAction: "cancel-download" };
   if (e.kind === "ready" && !s.image && !busy) return { text: t("empty.noImage") };
   return null;
