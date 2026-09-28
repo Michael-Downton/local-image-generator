@@ -51,6 +51,14 @@ describe("asset transfer", () => {
     await expect(transferAsset(options(async () => new Response("abc")), async () => { throw quota; })).rejects.toBe(quota);
   });
 
+  it("preserves transport errors when Chromium's Cache.put translates stream errors", async () => {
+    const fetchFn = async () => new Response(new ReadableStream({ start(c) { c.error(new TypeError("reset")); } }));
+    await expect(transferAsset(options(fetchFn), async (response) => {
+      try { await response.arrayBuffer(); }
+      catch { throw new DOMException("Cache.put encountered a network error", "NetworkError"); }
+    })).rejects.toMatchObject({ kind: "network" });
+  });
+
   it("requests and validates a byte range without losing its status", async () => {
     const fetchFn = vi.fn(async () => new Response("bc", { status: 206, headers: { "content-range": "bytes 1-2/3" } }));
     const value = await transferAsset({ ...options(fetchFn), range: { start: 1, end: 2 } }, async (r) => {

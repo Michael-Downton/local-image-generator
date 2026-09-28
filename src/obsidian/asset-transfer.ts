@@ -91,6 +91,7 @@ export async function transferAsset<T>(o: TransferOptions, consume: (response: R
     reader = response.body.getReader();
     const source = reader;
     let received = 0;
+    let bodyError: unknown;
     const body = new ReadableStream<Uint8Array>({
       async pull(target) {
         try {
@@ -104,11 +105,16 @@ export async function transferAsset<T>(o: TransferOptions, consume: (response: R
             o.onBytes?.(received, response.status === 200);
             target.enqueue(next.value);
           }
-        } catch (error) { target.error(error); }
+        } catch (error) { bodyError = error; target.error(error); }
       },
       cancel() { controller.abort(); void source.cancel().catch(() => {}); },
     }, { highWaterMark: 0 });
-    return await consume(new Response(body, { status: response.status, headers: response.headers }));
+    try { return await consume(new Response(body, { status: response.status, headers: response.headers })); }
+    catch (error) {
+      // Chromium ersetzt in Cache.put den Stream-Fehler durch DOMException(NetworkError).
+      // Die Einordnung als Transportfehler erhalten; reine Speicherfehler bleiben unveraendert.
+      throw bodyError ?? error;
+    }
   } finally {
     o.signal.removeEventListener("abort", abort);
     controller.abort();
